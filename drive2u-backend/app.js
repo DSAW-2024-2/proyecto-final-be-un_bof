@@ -14,7 +14,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(cors({
-  origin: 'http://localhost:3000', // Cambia esto por la URL de tu frontend
+  origin: 'http://localhost:5000', // Cambia esto por la URL de tu frontend
   credentials: true,
 }));
 
@@ -37,7 +37,7 @@ app.use((err, req, res, next) => {
 });
 
 // Iniciar el servidor
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
