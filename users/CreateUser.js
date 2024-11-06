@@ -18,7 +18,7 @@ router.post(
     { name: 'soatPhoto', maxCount: 1 },
   ]),
   [
-    // Validaciones comunes
+    // Common validations
     body('userType')
       .notEmpty()
       .withMessage('El tipo de usuario es obligatorio')
