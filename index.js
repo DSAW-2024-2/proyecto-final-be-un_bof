@@ -12,10 +12,16 @@ app.use(express.json());
 // Importar rutas
 const registerRoute = require('./users/CreateUser.js');
 const loginRoute = require('./users/LoginUser.js');
+const userRoute = require('./users/LoadUser.js');
+const createTripRoute = require('./trips/CreateTrip.js'); // Importamos CreateTrip.js
+const listTripsRoute = require('./trips/ListTrips.js'); // Importamos ListTrips.js
 
 // Usar las rutas
 app.use('/register', registerRoute);
 app.use('/login', loginRoute);
+app.use('/', userRoute);
+app.use('/trip/create', createTripRoute); // Ruta para crear un viaje
+app.use('/trips', listTripsRoute); // Ruta para listar los viajes
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {
