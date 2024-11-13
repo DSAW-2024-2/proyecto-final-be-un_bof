@@ -1,13 +1,18 @@
+// CreateUser.js
+
 const express = require('express');
 const { db, storage } = require('../firebase');
 const authMiddleware = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 const multer = require('multer');
+const jwt = require('jsonwebtoken'); // Importar jsonwebtoken
+require('dotenv').config(); // Cargar variables de entorno
 
-const router = express.Router();
+const registerRoute = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Middleware para manejar errores de validación
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -37,7 +42,189 @@ const uploadFile = async (file, path) => {
   });
 };
 
-router.get('/me', authMiddleware, async (req, res) => {
+// Endpoint para registrar un nuevo usuario
+registerRoute.post(
+  '/',
+  upload.fields([
+    { name: 'userPhoto', maxCount: 1 },
+    { name: 'vehiclePhoto', maxCount: 1 },
+    { name: 'soatPhoto', maxCount: 1 },
+  ]),
+  [
+    // Validaciones de entrada
+    body('userType')
+      .isIn(['passenger', 'driver'])
+      .withMessage('Tipo de usuario inválido'),
+    body('email')
+      .isEmail()
+      .withMessage('Formato de email inválido'),
+    body('password')
+      .isLength({ min: 8 })
+      .withMessage('La contraseña debe tener al menos 8 caracteres'),
+    body('name')
+      .notEmpty()
+      .withMessage('El nombre no puede estar vacío'),
+    body('surName')
+      .notEmpty()
+      .withMessage('El apellido no puede estar vacío'),
+    body('universityID')
+      .notEmpty()
+      .withMessage('El ID universitario no puede estar vacío'),
+    body('phoneNumber')
+      .isNumeric()
+      .withMessage('El número de teléfono debe ser numérico'),
+
+    // Validaciones adicionales para conductores
+    body('licensePlate')
+      .if(body('userType').equals('driver'))
+      .notEmpty()
+      .withMessage('La placa del vehículo no puede estar vacía'),
+    body('capacity')
+      .if(body('userType').equals('driver'))
+      .notEmpty()
+      .withMessage('La capacidad no puede estar vacía')
+      .isNumeric()
+      .withMessage('La capacidad debe ser numérica'),
+    body('brand')
+      .if(body('userType').equals('driver'))
+      .notEmpty()
+      .withMessage('La marca no puede estar vacía'),
+    body('model')
+      .if(body('userType').equals('driver'))
+      .notEmpty()
+      .withMessage('El modelo no puede estar vacío'),
+  ],
+  handleValidationErrors,
+  async (req, res) => {
+    const {
+      userType,
+      name,
+      surName,
+      universityID,
+      email,
+      phoneNumber,
+      password,
+      licensePlate,
+      capacity,
+      brand,
+      model,
+    } = req.body;
+
+    try {
+      const usersRef = db.ref('users');
+
+      // Verificar si el usuario ya existe por universityID o email
+      const snapshotByUniversityID = await usersRef
+        .orderByChild('universityID')
+        .equalTo(universityID)
+        .once('value');
+
+      if (snapshotByUniversityID.exists()) {
+        return res.status(400).json({ message: 'El usuario ya existe con este ID universitario' });
+      }
+
+      const snapshotByEmail = await usersRef
+        .orderByChild('email')
+        .equalTo(email)
+        .once('value');
+
+      if (snapshotByEmail.exists()) {
+        return res.status(400).json({ message: 'El usuario ya existe con este email' });
+      }
+
+      // Hash de la contraseña
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Crear referencia para el nuevo usuario
+      const newUserRef = usersRef.push();
+      const userId = newUserRef.key;
+
+      // Datos básicos del usuario
+      const newUserData = {
+        userType,
+        name,
+        surName,
+        universityID,
+        email,
+        phoneNumber,
+        password: hashedPassword,
+        createdAt: Date.now(),
+      };
+
+      // Si el usuario es conductor, agregar información adicional
+      if (userType === 'driver') {
+        newUserData.driverInfo = {
+          licensePlate,
+          capacity,
+          brand,
+          model,
+        };
+      }
+
+      // Manejo de archivos subidos
+      if (req.files) {
+        // Subir foto de usuario
+        if (req.files['userPhoto']) {
+          const file = req.files['userPhoto'][0];
+          const userPhotoURL = await uploadFile(
+            file,
+            `users/${universityID}-${Date.now()}`
+          );
+          newUserData.userPhotoURL = userPhotoURL;
+        }
+
+        // Si el usuario es conductor, subir fotos adicionales
+        if (userType === 'driver') {
+          if (req.files['vehiclePhoto']) {
+            const file = req.files['vehiclePhoto'][0];
+            const vehiclePhotoURL = await uploadFile(
+              file,
+              `vehicles/${universityID}-${Date.now()}`
+            );
+            newUserData.driverInfo.vehiclePhotoURL = vehiclePhotoURL;
+          }
+
+          if (req.files['soatPhoto']) {
+            const file = req.files['soatPhoto'][0];
+            const soatPhotoURL = await uploadFile(
+              file,
+              `soat/${universityID}-${Date.now()}`
+            );
+            newUserData.driverInfo.soatPhotoURL = soatPhotoURL;
+          }
+        }
+      }
+
+      // Guardar datos del usuario en la base de datos
+      await newUserRef.set(newUserData);
+
+      // Generar token JWT
+      const token = jwt.sign(
+        { id: userId, userType: userType },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN }
+      );
+
+      // Preparar datos para la respuesta (sin la contraseña)
+      const { password: pwd, ...userWithoutPassword } = newUserData;
+
+      res.status(201).json({
+        message: 'Usuario creado exitosamente',
+        token, // Incluir el token en la respuesta
+        user: userWithoutPassword,
+      });
+    } catch (error) {
+      console.error('Error al crear el usuario:', error);
+      res.status(500).json({
+        message: 'Error al crear el usuario',
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Endpoint para obtener los datos del usuario actual
+registerRoute.get('/me', authMiddleware, async (req, res) => {
   try {
     const userRef = db.ref(`users/${req.user.id}`);
     const snapshot = await userRef.once('value');
@@ -55,8 +242,8 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
-// Actualizar datos del usuario
-router.put(
+// Endpoint para actualizar los datos del usuario
+registerRoute.put(
   '/me',
   authMiddleware,
   upload.fields([
@@ -67,39 +254,32 @@ router.put(
   [
     // Validaciones comunes
     body('userType')
-      .optional()
       .isIn(['passenger', 'driver'])
       .withMessage('Tipo de usuario inválido'),
-    body('email').optional().isEmail().withMessage('Formato de email inválido'),
+    body('email').isEmail().withMessage('Formato de email inválido'),
     body('password')
-      .optional()
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
-    body('name').optional().notEmpty().withMessage('El nombre no puede estar vacío'),
-    body('surName').optional().notEmpty().withMessage('El apellido no puede estar vacío'),
-    body('universityID').optional().notEmpty().withMessage('El ID universitario no puede estar vacío'),
+    body('name').notEmpty().withMessage('El nombre no puede estar vacío'),
+    body('surName').notEmpty().withMessage('El apellido no puede estar vacío'),
+    body('universityID').notEmpty().withMessage('El ID universitario no puede estar vacío'),
     body('phoneNumber')
-      .optional()
       .isNumeric()
       .withMessage('El número de teléfono debe ser numérico'),
 
     // Validaciones adicionales para conductores
     body('licensePlate')
-      .optional()
       .notEmpty()
       .withMessage('La placa del vehículo no puede estar vacía'),
     body('capacity')
-      .optional()
       .notEmpty()
       .withMessage('La capacidad no puede estar vacía')
       .isNumeric()
       .withMessage('La capacidad debe ser numérica'),
     body('brand')
-      .optional()
       .notEmpty()
       .withMessage('La marca no puede estar vacía'),
     body('model')
-      .optional()
       .notEmpty()
       .withMessage('El modelo no puede estar vacío'),
   ],
@@ -200,7 +380,10 @@ router.put(
       }
 
       // Actualizar campos específicos de conductores
-      if ((userData.userType === 'driver' || userType === 'driver') && (licensePlate || capacity || brand || model)) {
+      if (
+        (userData.userType === 'driver' || userType === 'driver') &&
+        (licensePlate || capacity || brand || model)
+      ) {
         if (!updatedData.driverInfo) updatedData.driverInfo = {};
         if (licensePlate) updatedData.driverInfo.licensePlate = licensePlate;
         if (capacity) updatedData.driverInfo.capacity = capacity;
@@ -218,8 +401,8 @@ router.put(
   }
 );
 
-// Eliminar usuario
-router.delete('/me', authMiddleware, async (req, res) => {
+// Endpoint para eliminar el usuario actual
+registerRoute.delete('/me', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const userRef = db.ref(`users/${userId}`);
@@ -263,4 +446,4 @@ router.delete('/me', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = registerRoute;

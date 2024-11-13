@@ -6,7 +6,14 @@ dotenv.config();
 const app = express();
 
 // Middlewares
-app.use(cors());
+const corsOptions = {
+  origin: 'http://localhost:3000', // Permitir solo el frontend desde este origen
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Importar rutas
@@ -24,11 +31,11 @@ app.use('/trip/create', createTripRoute); // Ruta para crear un viaje
 app.use('/trips', listTripsRoute); // Ruta para listar los viajes
 
 // Manejo de rutas no encontradas
-app.use((req, res) => {
-  res.status(404).json({ message: 'Path not found' });
-});
+//app.use((req, res) => {
+  //res.status(404).json({ message: 'Path not found' });
+//});
 
-const PORT = 3000;
+const PORT = 5175;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });

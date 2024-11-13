@@ -1,21 +1,26 @@
+// trips/CreateTrip.js
 const express = require('express');
 const { db } = require('../firebase');
 const authMiddleware = require('../middlewares/authMiddleware');
 
-const router = express.Router();
+const createTripRoute = express.Router();
 
-router.post('/', authMiddleware, async (req, res) => {
-  const { startLocation, endLocation, date, time, seatsAvailable, price } = req.body;
+createTripRoute.post('/', authMiddleware, async (req, res) => {
+  const { startLocation, endTrip, timeTrip, availablePlaces, priceTrip, route } = req.body; // Renombrado de startTrip a startLocation
 
   try {
+    // Validar que startLocation no sea undefined o vacío
+    if (!startLocation) {
+      return res.status(400).json({ message: 'startLocation es obligatorio' });
+    }
+
     const newTrip = {
-      startLocation,
-      endLocation,
-      date,
-      time,
-      seatsAvailable,
-      price,
-      createdBy: req.user.id,
+      startLocation, // Renombrado de startTrip a startLocation
+      endTrip,
+      timeTrip,
+      availablePlaces,
+      priceTrip,
+      route
     };
 
     const tripRef = await db.ref('trips').push(newTrip);
@@ -26,4 +31,4 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = createTripRoute;
