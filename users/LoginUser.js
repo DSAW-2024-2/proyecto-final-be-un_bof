@@ -8,9 +8,13 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   const { email, password } = req.body;
 
-  // Validar que el campo de email no esté vacío
+  // Validar que los campos no estén vacíos
   if (!email) {
     return res.status(400).json({ message: 'El campo de email es requerido' });
+  }
+
+  if (!password) {
+    return res.status(400).json({ message: 'El campo de contraseña es requerido' });
   }
 
   // Validar que el email tenga el formato correcto
@@ -24,7 +28,7 @@ router.post('/', async (req, res) => {
     const snapshot = await userRef.once('value');
 
     if (!snapshot.exists()) {
-      return res.status(400).json({ message: 'User not found' });
+      return res.status(400).json({ message: 'Usuario no encontrado' });
     }
 
     const userData = Object.values(snapshot.val())[0];
@@ -32,7 +36,7 @@ router.post('/', async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, userData.password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({ message: 'Usuario o contraseña incorrectos' });
     }
 
     const token = jwt.sign(

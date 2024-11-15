@@ -53,14 +53,20 @@ registerRoute.post(
   [
     // Validaciones de entrada
     body('userType')
+      .notEmpty()
+      .withMessage('El tipo de usuario no puede estar vacío')
       .isIn(['passenger', 'driver'])
       .withMessage('Tipo de usuario inválido'),
 
     body('email')
+      .notEmpty()
+      .withMessage('El email no puede estar vacío')
       .isEmail()
       .withMessage('Formato de email inválido'),
 
     body('password')
+      .notEmpty()
+      .withMessage('La contraseña no puede estar vacía')
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
 
@@ -83,6 +89,8 @@ registerRoute.post(
       .withMessage('El ID universitario debe contener solo números'),
 
     body('phoneNumber')
+      .notEmpty()
+      .withMessage('El número de teléfono no puede estar vacío')
       .isNumeric()
       .withMessage('El número de teléfono debe ser numérico')
       .isLength({ min: 10 })
@@ -320,13 +328,21 @@ registerRoute.put(
   [
     // Validaciones comunes
     body('userType')
+      .notEmpty()
+      .withMessage('El tipo de usuario no puede estar vacío')
       .isIn(['passenger', 'driver'])
       .withMessage('Tipo de usuario inválido'),
 
-    body('email').isEmail().withMessage('Formato de email inválido'),
+    body('email')
+      .notEmpty()
+      .withMessage('El email no puede estar vacío')
+      .isEmail()
+      .withMessage('Formato de email inválido'),
 
     body('password')
       .optional()
+      .notEmpty()
+      .withMessage('La contraseña no puede estar vacía')
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
 
@@ -349,6 +365,8 @@ registerRoute.put(
       .withMessage('El ID universitario debe contener solo números'),
 
     body('phoneNumber')
+      .notEmpty()
+      .withMessage('El número de teléfono no puede estar vacío')
       .isNumeric()
       .withMessage('El número de teléfono debe ser numérico')
       .isLength({ min: 10 })

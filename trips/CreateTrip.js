@@ -1,12 +1,15 @@
 // trips/CreateTrip.js
+
 const express = require('express');
 const { db } = require('../firebase');
 const authMiddleware = require('../middlewares/authMiddleware');
+const roleMiddleware = require('../middlewares/roleMiddleware'); // Importamos el middleware de rol
 
 const createTripRoute = express.Router();
 
-createTripRoute.post('/', authMiddleware, async (req, res) => {
-  const { startLocation, endTrip, timeTrip, availablePlaces, priceTrip, route } = req.body; // Renombrado de startTrip a startLocation
+// Aplicamos los middlewares de autenticación y autorización
+createTripRoute.post('/', authMiddleware, roleMiddleware('driver'), async (req, res) => {
+  const { startLocation, endTrip, timeTrip, availablePlaces, priceTrip, route } = req.body;
 
   try {
     // Validar que startLocation no sea undefined o vacío
@@ -15,7 +18,8 @@ createTripRoute.post('/', authMiddleware, async (req, res) => {
     }
 
     const newTrip = {
-      startLocation, // Renombrado de startTrip a startLocation
+      driverId: req.user.id, // Asociamos el viaje con el conductor que lo creó
+      startLocation,
       endTrip,
       timeTrip,
       availablePlaces,
