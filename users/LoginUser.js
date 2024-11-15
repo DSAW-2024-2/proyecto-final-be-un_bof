@@ -8,6 +8,17 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   const { email, password } = req.body;
 
+  // Validar que el campo de email no esté vacío
+  if (!email) {
+    return res.status(400).json({ message: 'El campo de email es requerido' });
+  }
+
+  // Validar que el email tenga el formato correcto
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ message: 'Formato de email inválido' });
+  }
+
   try {
     const userRef = db.ref('users').orderByChild('email').equalTo(email);
     const snapshot = await userRef.once('value');

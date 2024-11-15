@@ -6,8 +6,8 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
 const multer = require('multer');
-const jwt = require('jsonwebtoken'); // Importar jsonwebtoken
-require('dotenv').config(); // Cargar variables de entorno
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const registerRoute = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -55,44 +55,89 @@ registerRoute.post(
     body('userType')
       .isIn(['passenger', 'driver'])
       .withMessage('Tipo de usuario inválido'),
+
     body('email')
       .isEmail()
       .withMessage('Formato de email inválido'),
+
     body('password')
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
+
     body('name')
       .notEmpty()
-      .withMessage('El nombre no puede estar vacío'),
+      .withMessage('El nombre no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El nombre solo puede contener letras'),
+
     body('surName')
       .notEmpty()
-      .withMessage('El apellido no puede estar vacío'),
+      .withMessage('El apellido no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El apellido solo puede contener letras'),
+
     body('universityID')
       .notEmpty()
-      .withMessage('El ID universitario no puede estar vacío'),
+      .withMessage('El ID universitario no puede estar vacío')
+      .isNumeric()
+      .withMessage('El ID universitario debe contener solo números'),
+
     body('phoneNumber')
       .isNumeric()
-      .withMessage('El número de teléfono debe ser numérico'),
+      .withMessage('El número de teléfono debe ser numérico')
+      .isLength({ min: 10 })
+      .withMessage('El número de teléfono debe tener al menos 10 dígitos'),
 
     // Validaciones adicionales para conductores
     body('licensePlate')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
       .if(body('userType').equals('driver'))
       .notEmpty()
       .withMessage('La placa del vehículo no puede estar vacía'),
+
     body('capacity')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
       .if(body('userType').equals('driver'))
       .notEmpty()
       .withMessage('La capacidad no puede estar vacía')
       .isNumeric()
       .withMessage('La capacidad debe ser numérica'),
+
     body('brand')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
       .if(body('userType').equals('driver'))
       .notEmpty()
-      .withMessage('La marca no puede estar vacía'),
+      .withMessage('La marca no puede estar vacía')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('La marca solo puede contener letras'),
+
     body('model')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
       .if(body('userType').equals('driver'))
       .notEmpty()
-      .withMessage('El modelo no puede estar vacío'),
+      .withMessage('El modelo no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El modelo solo puede contener letras'),
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -111,6 +156,21 @@ registerRoute.post(
     } = req.body;
 
     try {
+      // Validación adicional para archivos subidos
+      if (userType === 'passenger') {
+        if (
+          (req.files && (req.files['vehiclePhoto'] || req.files['soatPhoto'])) ||
+          licensePlate ||
+          capacity ||
+          brand ||
+          model
+        ) {
+          return res.status(400).json({
+            message: 'Un pasajero no puede incluir información del vehículo',
+          });
+        }
+      }
+
       const usersRef = db.ref('users');
 
       // Verificar si el usuario ya existe por universityID o email
@@ -120,7 +180,9 @@ registerRoute.post(
         .once('value');
 
       if (snapshotByUniversityID.exists()) {
-        return res.status(400).json({ message: 'El usuario ya existe con este ID universitario' });
+        return res
+          .status(400)
+          .json({ message: 'El usuario ya existe con este ID universitario' });
       }
 
       const snapshotByEmail = await usersRef
@@ -129,7 +191,9 @@ registerRoute.post(
         .once('value');
 
       if (snapshotByEmail.exists()) {
-        return res.status(400).json({ message: 'El usuario ya existe con este email' });
+        return res
+          .status(400)
+          .json({ message: 'El usuario ya existe con este email' });
       }
 
       // Hash de la contraseña
@@ -210,7 +274,7 @@ registerRoute.post(
 
       res.status(201).json({
         message: 'Usuario creado exitosamente',
-        token, // Incluir el token en la respuesta
+        token,
         user: userWithoutPassword,
       });
     } catch (error) {
@@ -238,7 +302,9 @@ registerRoute.get('/me', authMiddleware, async (req, res) => {
 
     res.status(200).json(userData);
   } catch (error) {
-    res.status(500).json({ message: 'Error al obtener los datos del usuario', error });
+    res
+      .status(500)
+      .json({ message: 'Error al obtener los datos del usuario', error });
   }
 });
 
@@ -256,32 +322,88 @@ registerRoute.put(
     body('userType')
       .isIn(['passenger', 'driver'])
       .withMessage('Tipo de usuario inválido'),
+
     body('email').isEmail().withMessage('Formato de email inválido'),
+
     body('password')
+      .optional()
       .isLength({ min: 8 })
       .withMessage('La contraseña debe tener al menos 8 caracteres'),
-    body('name').notEmpty().withMessage('El nombre no puede estar vacío'),
-    body('surName').notEmpty().withMessage('El apellido no puede estar vacío'),
-    body('universityID').notEmpty().withMessage('El ID universitario no puede estar vacío'),
+
+    body('name')
+      .notEmpty()
+      .withMessage('El nombre no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El nombre solo puede contener letras'),
+
+    body('surName')
+      .notEmpty()
+      .withMessage('El apellido no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El apellido solo puede contener letras'),
+
+    body('universityID')
+      .notEmpty()
+      .withMessage('El ID universitario no puede estar vacío')
+      .isNumeric()
+      .withMessage('El ID universitario debe contener solo números'),
+
     body('phoneNumber')
       .isNumeric()
-      .withMessage('El número de teléfono debe ser numérico'),
+      .withMessage('El número de teléfono debe ser numérico')
+      .isLength({ min: 10 })
+      .withMessage('El número de teléfono debe tener al menos 10 dígitos'),
 
     // Validaciones adicionales para conductores
     body('licensePlate')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
+      .if(body('userType').equals('driver'))
       .notEmpty()
       .withMessage('La placa del vehículo no puede estar vacía'),
+
     body('capacity')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
+      .if(body('userType').equals('driver'))
       .notEmpty()
       .withMessage('La capacidad no puede estar vacía')
       .isNumeric()
       .withMessage('La capacidad debe ser numérica'),
+
     body('brand')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
+      .if(body('userType').equals('driver'))
       .notEmpty()
-      .withMessage('La marca no puede estar vacía'),
+      .withMessage('La marca no puede estar vacía')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('La marca solo puede contener letras'),
+
     body('model')
+      .custom((value, { req }) => {
+        if (req.body.userType === 'passenger' && value) {
+          throw new Error('Un pasajero no puede incluir información de un vehículo');
+        }
+        return true;
+      })
+      .if(body('userType').equals('driver'))
       .notEmpty()
-      .withMessage('El modelo no puede estar vacío'),
+      .withMessage('El modelo no puede estar vacío')
+      .matches(/^[A-Za-z\s]+$/)
+      .withMessage('El modelo solo puede contener letras'),
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -300,10 +422,27 @@ registerRoute.put(
     } = req.body;
 
     try {
-      const updatedData = {};
       const userRef = db.ref(`users/${req.user.id}`);
       const snapshot = await userRef.once('value');
       const userData = snapshot.val();
+
+      // Validación adicional para archivos subidos
+      if (userType === 'driver') {
+        if (
+          req.files['vehiclePhoto'] ||
+          req.files['soatPhoto'] ||
+          licensePlate ||
+          capacity ||
+          brand ||
+          model
+        ) {
+          return res.status(400).json({
+            message: 'Un pasajero no puede incluir información de un vehículo',
+          });
+        }
+      }
+
+      const updatedData = {};
 
       // Actualizar campos comunes
       if (userType) updatedData.userType = userType;
@@ -344,10 +483,14 @@ registerRoute.put(
           // Actualizar foto del vehículo
           if (req.files['vehiclePhoto']) {
             if (userData.driverInfo && userData.driverInfo.vehiclePhotoURL) {
-              const oldFileName = userData.driverInfo.vehiclePhotoURL.split('/').pop();
+              const oldFileName = userData.driverInfo.vehiclePhotoURL
+                .split('/')
+                .pop();
               const oldFile = storage.file(`vehicles/${oldFileName}`);
               await oldFile.delete().catch((error) => {
-                console.error(`Error al eliminar la foto del vehículo anterior: ${error}`);
+                console.error(
+                  `Error al eliminar la foto del vehículo anterior: ${error}`
+                );
               });
             }
 
@@ -362,10 +505,14 @@ registerRoute.put(
           // Actualizar foto del SOAT
           if (req.files['soatPhoto']) {
             if (userData.driverInfo && userData.driverInfo.soatPhotoURL) {
-              const oldFileName = userData.driverInfo.soatPhotoURL.split('/').pop();
+              const oldFileName = userData.driverInfo.soatPhotoURL
+                .split('/')
+                .pop();
               const oldFile = storage.file(`soat/${oldFileName}`);
               await oldFile.delete().catch((error) => {
-                console.error(`Error al eliminar la foto del SOAT anterior: ${error}`);
+                console.error(
+                  `Error al eliminar la foto del SOAT anterior: ${error}`
+                );
               });
             }
 
@@ -396,7 +543,9 @@ registerRoute.put(
       res.status(200).json({ message: 'Usuario actualizado correctamente' });
     } catch (error) {
       console.error('Error al actualizar el usuario:', error);
-      res.status(500).json({ message: 'Error al actualizar el usuario', error });
+      res
+        .status(500)
+        .json({ message: 'Error al actualizar el usuario', error });
     }
   }
 );
@@ -439,7 +588,9 @@ registerRoute.delete('/me', authMiddleware, async (req, res) => {
 
     // Eliminar usuario de la base de datos
     await userRef.remove();
-    res.status(200).json({ message: 'Usuario y datos asociados eliminados correctamente' });
+    res
+      .status(200)
+      .json({ message: 'Usuario y datos asociados eliminados correctamente' });
   } catch (error) {
     console.error('Error al eliminar el usuario:', error);
     res.status(500).json({ message: 'Error al eliminar el usuario', error });
