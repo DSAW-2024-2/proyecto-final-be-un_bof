@@ -7,7 +7,7 @@ const app = express();
 
 // Middlewares
 const corsOptions = {
-  origin: 'http://localhost:3000', // Permitir solo el frontend desde este origen
+  origin: ['http://localhost:3000', 'https://drive2u.vercel.app'], // Permitir ambos orígenes
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Authorization', 'Content-Type'],
   credentials: true
@@ -31,9 +31,9 @@ app.use('/trip/create', createTripRoute); // Ruta para crear un viaje
 app.use('/trips', listTripsRoute); // Ruta para listar los viajes
 
 // Manejo de rutas no encontradas
-//app.use((req, res) => {
-  //res.status(404).json({ message: 'Path not found' });
-//});
+app.use((req, res) => {
+  res.status(404).json({ message: 'Path not found' });
+});
 
 const PORT = 5175;
 app.listen(PORT, () => {
