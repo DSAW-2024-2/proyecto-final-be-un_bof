@@ -1,5 +1,5 @@
 Nombres: Andrés Mauricio Ricaurte y David Santiago Medina
-Link al backend: https://proyecto-final-be-un-bof-1.vercel.app/?vercelToolbarCode=J-RvLWux3yKp-Ex
+Link al backend: https://proyecto-final-be-un-bof.vercel.app
 
 # Taller en Parejas: Creación de un Endpoint con Express.js
 
