@@ -9,7 +9,6 @@ const app = express();
 
 // Middlewares
 const corsOptions = {
-  origin: 'https://drive2u.vercel.app', // Permitir solo el frontend desde este origen
   origin: ['http://localhost:3000', 'https://drive2u.vercel.app'], // Permitir ambos orígenes
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Authorization', 'Content-Type'],
