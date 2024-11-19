@@ -1,4 +1,4 @@
-// CreateUser.js
+// users/CreateUser.js
 
 const express = require('express');
 const { db, storage } = require('../firebase');
@@ -204,6 +204,32 @@ registerRoute.post(
           .json({ message: 'El usuario ya existe con este email' });
       }
 
+      // **Nueva Validación: Verificar si el número de teléfono ya está asociado a otra cuenta**
+      const snapshotByPhoneNumber = await usersRef
+        .orderByChild('phoneNumber')
+        .equalTo(phoneNumber)
+        .once('value');
+
+      if (snapshotByPhoneNumber.exists()) {
+        return res
+          .status(400)
+          .json({ message: 'El número de teléfono ya está asociado a otra cuenta' });
+      }
+
+      // **Nueva Validación: Verificar si la placa del vehículo ya está asociada a otro conductor**
+      if (userType === 'driver') {
+        const snapshotByLicensePlate = await usersRef
+          .orderByChild('driverInfo/licensePlate')
+          .equalTo(licensePlate)
+          .once('value');
+
+        if (snapshotByLicensePlate.exists()) {
+          return res
+            .status(400)
+            .json({ message: 'La placa del vehículo ya está asociada a otro conductor' });
+        }
+      }
+
       // Hash de la contraseña
       const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -227,7 +253,7 @@ registerRoute.post(
       if (userType === 'driver') {
         newUserData.driverInfo = {
           licensePlate,
-          capacity,
+          capacity: Number(capacity),
           brand,
           model,
         };
@@ -270,11 +296,17 @@ registerRoute.post(
       // Guardar datos del usuario en la base de datos
       await newUserRef.set(newUserData);
 
+      const expiresIn = Number(process.env.JWT_EXPIRES_IN);
+
+      if (isNaN(expiresIn)) {
+        throw new Error('JWT_EXPIRES_IN debe ser un número válido en segundos.');
+      }
+
       // Generar token JWT
       const token = jwt.sign(
         { id: userId, userType: userType },
         process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN }
+        { expiresIn: expiresIn }
       );
 
       // Preparar datos para la respuesta (sin la contraseña)
@@ -445,22 +477,52 @@ registerRoute.put(
       const userData = snapshot.val();
 
       // Validación adicional para archivos subidos
-      if (userType === 'driver') {
+      if (userType === 'passenger') {
         if (
-          req.files['vehiclePhoto'] ||
-          req.files['soatPhoto'] ||
+          (req.files && (req.files['vehiclePhoto'] || req.files['soatPhoto'])) ||
           licensePlate ||
           capacity ||
           brand ||
           model
         ) {
           return res.status(400).json({
-            message: 'Un pasajero no puede incluir información de un vehículo',
+            message: 'Un pasajero no puede incluir información del vehículo',
           });
         }
       }
 
       const updatedData = {};
+
+      // Validar si email, universityID, phoneNumber o licensePlate ya existen, excepto para el usuario actual
+      const usersRef = db.ref('users');
+
+      if (email && email !== userData.email) {
+        const snapshotByEmail = await usersRef.orderByChild('email').equalTo(email).once('value');
+        if (snapshotByEmail.exists() && Object.keys(snapshotByEmail.val())[0] !== req.user.id) {
+          return res.status(400).json({ message: 'El email ya está asociado a otra cuenta' });
+        }
+      }
+
+      if (universityID && universityID !== userData.universityID) {
+        const snapshotByUniversityID = await usersRef.orderByChild('universityID').equalTo(universityID).once('value');
+        if (snapshotByUniversityID.exists() && Object.keys(snapshotByUniversityID.val())[0] !== req.user.id) {
+          return res.status(400).json({ message: 'El ID universitario ya está asociado a otra cuenta' });
+        }
+      }
+
+      if (phoneNumber && phoneNumber !== userData.phoneNumber) {
+        const snapshotByPhoneNumber = await usersRef.orderByChild('phoneNumber').equalTo(phoneNumber).once('value');
+        if (snapshotByPhoneNumber.exists() && Object.keys(snapshotByPhoneNumber.val())[0] !== req.user.id) {
+          return res.status(400).json({ message: 'El número de teléfono ya está asociado a otra cuenta' });
+        }
+      }
+
+      if (userType === 'driver' && licensePlate && licensePlate !== (userData.driverInfo ? userData.driverInfo.licensePlate : '')) {
+        const snapshotByLicensePlate = await usersRef.orderByChild('driverInfo/licensePlate').equalTo(licensePlate).once('value');
+        if (snapshotByLicensePlate.exists() && Object.keys(snapshotByLicensePlate.val())[0] !== req.user.id) {
+          return res.status(400).json({ message: 'La placa del vehículo ya está asociada a otro conductor' });
+        }
+      }
 
       // Actualizar campos comunes
       if (userType) updatedData.userType = userType;
@@ -475,72 +537,66 @@ registerRoute.put(
       }
 
       // Manejo de archivos subidos
-      if (req.files) {
+      if (req.files && req.files['userPhoto']) {
         // Actualizar foto de usuario
-        if (req.files['userPhoto']) {
-          if (userData.userPhotoURL) {
-            const oldFileName = userData.userPhotoURL.split('/').pop();
-            const oldFile = storage.file(`users/${oldFileName}`);
+        if (userData.userPhotoURL) {
+          const oldFileName = userData.userPhotoURL.split('/').pop();
+          const oldFile = storage.file(`users/${oldFileName}`);
+          await oldFile.delete().catch((error) => {
+            console.error(`Error al eliminar la foto anterior: ${error}`);
+          });
+        }
+
+        const file = req.files['userPhoto'][0];
+        const userPhotoURL = await uploadFile(
+          file,
+          `users/${userData.universityID}-${Date.now()}`
+        );
+        updatedData.userPhotoURL = userPhotoURL;
+      }
+
+      // Si el usuario es conductor, manejar fotos adicionales
+      if (userData.userType === 'driver' || userType === 'driver') {
+        if (!updatedData.driverInfo) updatedData.driverInfo = {};
+
+        // Actualizar foto del vehículo
+        if (req.files && req.files['vehiclePhoto']) {
+          if (userData.driverInfo && userData.driverInfo.vehiclePhotoURL) {
+            const oldFileName = userData.driverInfo.vehiclePhotoURL.split('/').pop();
+            const oldFile = storage.file(`vehicles/${oldFileName}`);
             await oldFile.delete().catch((error) => {
-              console.error(`Error al eliminar la foto anterior: ${error}`);
+              console.error(
+                `Error al eliminar la foto del vehículo anterior: ${error}`
+              );
             });
           }
 
-          const file = req.files['userPhoto'][0];
-          const userPhotoURL = await uploadFile(
+          const file = req.files['vehiclePhoto'][0];
+          const vehiclePhotoURL = await uploadFile(
             file,
-            `users/${userData.universityID}-${Date.now()}`
+            `vehicles/${userData.universityID}-${Date.now()}`
           );
-          updatedData.userPhotoURL = userPhotoURL;
+          updatedData.driverInfo.vehiclePhotoURL = vehiclePhotoURL;
         }
 
-        // Si el usuario es conductor, manejar fotos adicionales
-        if (userData.userType === 'driver' || userType === 'driver') {
-          if (!updatedData.driverInfo) updatedData.driverInfo = {};
-
-          // Actualizar foto del vehículo
-          if (req.files['vehiclePhoto']) {
-            if (userData.driverInfo && userData.driverInfo.vehiclePhotoURL) {
-              const oldFileName = userData.driverInfo.vehiclePhotoURL
-                .split('/')
-                .pop();
-              const oldFile = storage.file(`vehicles/${oldFileName}`);
-              await oldFile.delete().catch((error) => {
-                console.error(
-                  `Error al eliminar la foto del vehículo anterior: ${error}`
-                );
-              });
-            }
-
-            const file = req.files['vehiclePhoto'][0];
-            const vehiclePhotoURL = await uploadFile(
-              file,
-              `vehicles/${userData.universityID}-${Date.now()}`
-            );
-            updatedData.driverInfo.vehiclePhotoURL = vehiclePhotoURL;
+        // Actualizar foto del SOAT
+        if (req.files && req.files['soatPhoto']) {
+          if (userData.driverInfo && userData.driverInfo.soatPhotoURL) {
+            const oldFileName = userData.driverInfo.soatPhotoURL.split('/').pop();
+            const oldFile = storage.file(`soat/${oldFileName}`);
+            await oldFile.delete().catch((error) => {
+              console.error(
+                `Error al eliminar la foto del SOAT anterior: ${error}`
+              );
+            });
           }
 
-          // Actualizar foto del SOAT
-          if (req.files['soatPhoto']) {
-            if (userData.driverInfo && userData.driverInfo.soatPhotoURL) {
-              const oldFileName = userData.driverInfo.soatPhotoURL
-                .split('/')
-                .pop();
-              const oldFile = storage.file(`soat/${oldFileName}`);
-              await oldFile.delete().catch((error) => {
-                console.error(
-                  `Error al eliminar la foto del SOAT anterior: ${error}`
-                );
-              });
-            }
-
-            const file = req.files['soatPhoto'][0];
-            const soatPhotoURL = await uploadFile(
-              file,
-              `soat/${userData.universityID}-${Date.now()}`
-            );
-            updatedData.driverInfo.soatPhotoURL = soatPhotoURL;
-          }
+          const file = req.files['soatPhoto'][0];
+          const soatPhotoURL = await uploadFile(
+            file,
+            `soat/${userData.universityID}-${Date.now()}`
+          );
+          updatedData.driverInfo.soatPhotoURL = soatPhotoURL;
         }
       }
 
