@@ -641,8 +641,9 @@ registerRoute.delete('/me', authMiddleware, async (req, res) => {
       });
     }
 
-    // Si es conductor, eliminar fotos adicionales
+    // Si es conductor, eliminar fotos adicionales y viaje asociado
     if (userData.userType === 'driver' && userData.driverInfo) {
+      // Eliminar fotos adicionales del conductor
       if (userData.driverInfo.vehiclePhotoURL) {
         const fileName = userData.driverInfo.vehiclePhotoURL.split('/').pop();
         const file = storage.file(`vehicles/${fileName}`);
@@ -658,13 +659,27 @@ registerRoute.delete('/me', authMiddleware, async (req, res) => {
           console.error(`Error al eliminar la foto del SOAT: ${error}`);
         });
       }
+
+      // Eliminar viaje asociado al conductor si lo tiene
+      const tripsSnapshot = await db.ref('trips').orderByChild('driverId').equalTo(userId).once('value');
+      if (tripsSnapshot.exists()) {
+        tripsSnapshot.forEach(async (tripSnapshot) => {
+          const tripId = tripSnapshot.key;
+          // Eliminar reservas asociadas al viaje antes de eliminar el viaje
+          const reservationsRef = db.ref('reservations');
+          const reservationsSnapshot = await reservationsRef.orderByChild('tripId').equalTo(tripId).once('value');
+          reservationsSnapshot.forEach(async (reservationSnapshot) => {
+            await reservationSnapshot.ref.remove();
+          });
+          // Eliminar el viaje asociado
+          await tripSnapshot.ref.remove();
+        });
+      }
     }
 
     // Eliminar usuario de la base de datos
     await userRef.remove();
-    res
-      .status(200)
-      .json({ message: 'Usuario y datos asociados eliminados correctamente' });
+    res.status(200).json({ message: 'Usuario y datos asociados eliminados correctamente' });
   } catch (error) {
     console.error('Error al eliminar el usuario:', error);
     res.status(500).json({ message: 'Error al eliminar el usuario', error });
