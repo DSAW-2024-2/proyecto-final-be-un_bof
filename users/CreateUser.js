@@ -296,7 +296,7 @@ registerRoute.post(
       // Guardar datos del usuario en la base de datos
       await newUserRef.set(newUserData);
 
-      const expiresIn = Number(process.env.JWT_EXPIRES_IN);
+      const expiresIn = Number(process.env.JWT_EXPIRES_IN)||3600;
 
       if (isNaN(expiresIn)) {
         throw new Error('JWT_EXPIRES_IN debe ser un número válido en segundos.');

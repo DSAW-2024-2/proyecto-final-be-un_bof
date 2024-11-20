@@ -36,9 +36,7 @@ selectTripRoute.post(
             }
 
             // Validación de que pickup_dropPoint sea un array con la longitud exacta de requestedPlaces
-            if (!Array.isArray(pickup_dropPoint) || pickup_dropPoint.length !== requestedPlacesNumber) {
-                return res.status(400).json({ message: 'La cantidad de puntos de origen/destino no corresponde con la cantidad de cupos solicitados' });
-            }
+
 
             // Obtener el viaje desde la base de datos
             const tripRef = db.ref(`trips/${tripId}`);
